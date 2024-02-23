@@ -82,12 +82,6 @@ This graph shows how many times each products were sold.
 
 # Show the sum of units and revenue for every product category
 
-::: callout-warning
-## Small issue
-
-I didn't made this part with RSQLite because it wasn't mentionned in the exercise description. I realized at the end that I could have done this part with RSQLite.
-:::
-
 Sum of units for every product category:
 
 ```{r}
@@ -258,10 +252,6 @@ On the left, we can see a histogram showing the popularity of each segment. It i
 
 On the right, the histogram of average revenues by category. On average, the Urban category generates the most revenue, but the Youth category the least.
 
-# Explain which approach (tidyverse or RSQLite do you prefer and why)
-
-I prefer the Tidyverse package, for its many features and also because it's easy to use most of the time. However, I recognize that RSQLite can be useful because it allows you to have the advantages of SQLite in an R environment.
-
 # Take TA_reviews.xlsx file and calculate the average sentiment by yearmonth
 
 ```{r}
@@ -334,7 +324,6 @@ average_sentiment <- sentiment_scores %>%
 average_sentiment <- average_sentiment %>% arrange(desc(avg_sentiment))
 average_sentiment
 ```
-
 The Year 2013 was the one with the most positive reviews on TripAdvisor for this hotel.
 
                                    **THANK YOU**
