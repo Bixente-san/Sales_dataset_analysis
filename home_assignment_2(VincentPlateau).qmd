@@ -1,0 +1,340 @@
+---
+title: "Home assignment 2"
+author: "Vincent PLATEAU"
+editor: visual
+format: 
+    html:
+      toc: true
+      toc_float: true
+      toc-location: left
+      mainfont: cursive
+      embed-resources: true
+---
+
+
+```{r}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+```
+
+Packages needed :
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(RSQLite)
+library(dataMaid)
+library(readr)
+```
+
+# Import "bi_product.txt" and "bi_salesFact.txt". And join tables on **ProductID**.
+
+```{r}
+# Import bi_product.txt and bi_salesFact.txt
+product_data <- read_delim("bi_product.txt", delim = ";")
+sales_data <- read_delim("bi_sales.txt", delim = ",")
+```
+
+```{r}
+# Join on ProductID
+merged_data <- left_join(sales_data, product_data, by = "ProductID")
+```
+
+# Use dataMaid package to describe the data
+
+::: callout-note
+It doesn't work when you render this part, so I let a "\#" here.
+:::
+
+```{r}
+#makeDataReport(merged_data)
+```
+
+# Quick description of the data
+
+```{r}
+summary(merged_data)
+```
+
+Based on the report and the summary we can emphasize some interesting points :
+
+1.  There is 2412 different products and 4 categories (mix, urban, rural and Youth)
+
+2.  The most popular category is "urban":
+
+![](images/categoryCountR.png){width="331"}
+
+3.  The best-selling product is "Maximus UM-54" with 625 sales.
+
+```{r}
+count_bestsale <- merged_data %>%
+  filter(Product == "Maximus UM-54") %>%
+  nrow()
+
+print(count_bestsale)
+```
+
+This graph shows how many times each products were sold.
+
+![](images/productbestsale.png){width="331"}
+
+4.  Geographically, California seems to be the state where most sales are made.
+
+# Show the sum of units and revenue for every product category
+
+::: callout-warning
+## Small issue
+
+I didn't made this part with RSQLite because it wasn't mentionned in the exercise description. I realized at the end that I could have done this part with RSQLite.
+:::
+
+Sum of units for every product category:
+
+```{r}
+SumUnitsperCateg<- merged_data %>%
+  group_by(Category) %>%
+  summarise(total_units = sum(Units))
+
+print(SumUnitsperCateg)
+```
+
+Sum of revenue for every product category:
+
+::: callout-note
+For this point, I realized that there were NAs in the Revenue column. So I've replaced it by 0.
+:::
+
+```{r}
+summary(merged_data$Revenue)
+
+```
+
+```{r}
+# Replace NA by 0
+merged_data$Revenue[is.na(merged_data$Revenue)] <- 0
+summary(merged_data$Revenue)
+```
+
+```{r}
+SumRevperCateg <- merged_data %>%
+  group_by(Category) %>%
+  summarise(total_revenue = sum(`Revenue`))
+
+print(SumRevperCateg)
+```
+
+# Which is the cheapest product and which is the most expensive one?
+
+::: callout-note
+For this question I've used RSQLite.
+:::
+
+Let's create a SQLite database:
+
+```{r echo=TRUE}
+conn <- dbConnect(RSQLite::SQLite(), dbname = "merged_data.db")
+
+# Write the merged_data dataset into a table names merged_data
+dbWriteTable(conn, "merged_data", merged_data, overwrite = TRUE)
+
+```
+
+```{r eval=FALSE, include=FALSE}
+ # This is a test
+ dbGetQuery(conn, "SELECT DISTINCT Product, Units, Revenue, Revenue / Units AS Unit_Price
+                   FROM merged_data")
+```
+
+The cheapest product is Pirum RP-30:
+
+```{r}
+# RSQLite query to get the cheapest product
+
+dbGetQuery(conn, "
+  SELECT Product, MIN(Revenue / Units) AS Unit_Price
+  FROM merged_data
+  WHERE Revenue / Units != 0") # Here I've added this condition to get the cheapest product but with a price different from 0
+
+
+```
+
+The most expansive product is Fama UE-68.
+
+```{r}
+# RSQLite query to get the most expansive product
+dbGetQuery(conn, "
+                  SELECT Product, MAX(Revenue / Units) AS Unit_Price
+                  FROM merged_data")
+```
+
+# With tidyverse show the best 3 Categories by revenue and in each selected category the 3 best products
+
+First let's compute the revenue for each categories (we already did it previously) :
+
+```{r}
+category_revenue <- merged_data %>%
+  group_by(Category) %>%
+  summarise(Total_Revenue = sum(Revenue, na.rm = TRUE)) %>%
+  arrange(desc(Total_Revenue)) %>%
+ slice_max(Total_Revenue, n = 3) # TOP 3 
+
+print(category_revenue)
+```
+
+Then, we'll show best 3 products for each categories of these 3 categories:
+
+```{r}
+top_products <- merged_data %>%
+  filter(Category %in% category_revenue$Category) %>%
+  group_by(Category, Product) %>%
+  summarise(Total_Revenue = sum(Revenue)) %>%
+  arrange(Category, desc(Total_Revenue)) %>%
+  group_by(Category) %>%
+  slice_max(Total_Revenue, n = 3)
+
+top_products
+```
+
+# What are the mean and median (Revenue) of every category?
+
+We can easily compute the mean with a SQLite query:
+
+```{r}
+dbGetQuery(conn,"SELECT Category, AVG(Revenue) AS Mean_Revenue
+FROM merged_data
+GROUP BY Category")
+
+```
+
+```{r}
+# Close the connection after use
+dbDisconnect(conn)
+```
+
+But tidyverse is more efficient to compute both quickly:
+
+```{r}
+medandmean <- merged_data %>%
+  group_by(Category) %>%
+  summarise(
+    Mean_Revenue = mean(Revenue, na.rm = TRUE),
+    Median_Revenue = median(Revenue, na.rm = TRUE))
+
+medandmean
+```
+
+# Two charts using ggplot2
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+
+# For the first diagram, I want to measure the popularity of each segment
+segment_counts <- merged_data %>%
+  group_by(Segment) %>%
+  summarise(Count = n())
+
+p1 <- ggplot(segment_counts, aes(x = Segment, y = Count)) +
+  geom_bar(stat = "identity", fill = "yellow") +
+  theme_minimal() +
+  labs(title = 'Number of "Segment" occurrences \n in sales data', x = "Segment", y = "") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  
+# For the 2nd diagram : mean of revenues for each category
+p2 <- medandmean %>%
+  ggplot(aes(x = Category, y = Mean_Revenue, fill = Category)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Average Revenue per Category", x = "Category", y = "Mean of the revenue") +
+  theme(legend.position = "none")
+
+# 2 charts side by side 
+grid.arrange(p1, p2, ncol = 2)
+
+```
+
+On the left, we can see a histogram showing the popularity of each segment. It is based on the number of sales (sales_data). We can conclude that the Moderation, Convenience and Productivity segments generate the most sales. The segments : Regular, Select and All Season don't have many sales, a weakness that needs to be improved.
+
+On the right, the histogram of average revenues by category. On average, the Urban category generates the most revenue, but the Youth category the least.
+
+# Explain which approach (tidyverse or RSQLite do you prefer and why)
+
+I prefer the Tidyverse package, for its many features and also because it's easy to use most of the time. However, I recognize that RSQLite can be useful because it allows you to have the advantages of SQLite in an R environment.
+
+# Take TA_reviews.xlsx file and calculate the average sentiment by yearmonth
+
+```{r}
+
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(tidytext)
+
+# Read data
+reviews <- read_excel("TA_reviews.xlsx")
+
+# Extract Year-Month from date
+reviews <- reviews %>%
+  mutate(yearmonth = format(as.Date(date), "%Y-%m"))
+
+# Unnest words from fullrev column
+tidy_reviews <- reviews %>%
+  unnest_tokens(word, fullrev)
+
+# Calculate sentiment score using tidytext's sentiments dataset
+sentiment_scores <- tidy_reviews %>%
+  inner_join(get_sentiments("bing")) %>% # bing = positive or negative (not nrc)
+  count(id, index = yearmonth, sentiment) %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment_score = positive - negative)
+
+# Calculate average sentiment score by Year-Month
+average_sentiment <- sentiment_scores %>%
+  group_by(index) %>%
+  summarise(avg_sentiment = mean(sentiment_score))
+
+```
+
+As you can see the sentiment score is calculated by doing: number of positive words - number of negative words (detected by get_sentiments("bing")).
+
+```{r}
+head(sentiment_scores)
+```
+
+At the end, this table shows an average sentiment score for each month from February 2013 to May 2018:
+
+```{r}
+average_sentiment
+```
+
+We can do the exact same process but only for year:
+
+```{r}
+# Extract Year-Month from date
+reviews <- reviews %>%
+  mutate(yearmonth = format(as.Date(date), "%Y"))
+
+# Unnest words from fullrev column
+tidy_reviews <- reviews %>%
+  unnest_tokens(word, fullrev)
+
+# Calculate sentiment score using tidytext's sentiments dataset
+sentiment_scores <- tidy_reviews %>%
+  inner_join(get_sentiments("bing")) %>% # bing = positive or negative (not nrc)
+  count(id, index = yearmonth, sentiment) %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment_score = positive - negative)
+
+# Calculate average sentiment score by Year-Month
+average_sentiment <- sentiment_scores %>%
+  group_by(index) %>%
+  summarise(avg_sentiment = mean(sentiment_score))
+ 
+average_sentiment <- average_sentiment %>% arrange(desc(avg_sentiment))
+average_sentiment
+```
+
+The Year 2013 was the one with the most positive reviews on TripAdvisor for this hotel.
+
+                                   **THANK YOU**
