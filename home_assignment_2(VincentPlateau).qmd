@@ -1,6 +1,6 @@
 ---
 title: "Home assignment 2"
-author: "Vincent PLATEAU"
+author: "Vincent"
 editor: visual
 format: 
     html:
